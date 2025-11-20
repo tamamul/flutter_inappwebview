@@ -1,4 +1,4 @@
-name: Build Flutter APK
+name: Build Flutter APK Skip Build Runner
 
 on:
   push:
@@ -21,12 +21,12 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
         
-    - name: Setup Latest Flutter
+    - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
         flutter-version: '3.22.0'
         
-    - name: Verify Versions
+    - name: Verify Installation
       run: |
         flutter --version
         dart --version
@@ -35,39 +35,22 @@ jobs:
       run: |
         yes | flutter doctor --android-licenses || true
         
-    - name: Clean Project
+    - name: Clean and Install Dependencies
+      working-directory: ./flutter_inappwebview/example
       run: |
         flutter clean
+        flutter pub get
         
-    - name: Upgrade Dependencies
+    - name: Try Build Runner (Optional)
       working-directory: ./flutter_inappwebview_platform_interface
       run: |
-        flutter pub upgrade
-        # Coba update analyzer secara spesifik
-        flutter pub add dev:analyzer:^9.0.0 --dev
+        # Coba build runner, tapi continue jika gagal
+        flutter pub get
+        timeout 60s flutter pub run build_runner build --delete-conflicting-outputs || echo "Build runner failed, continuing without it..."
         
-    - name: Install Dependencies with Retry
+    - name: Build APK
       working-directory: ./flutter_inappwebview/example
       run: |
-        flutter pub get --verbose
-        
-    - name: Run Build Runner with Fix
-      working-directory: ./flutter_inappwebview_platform_interface
-      run: |
-        # Coba beberapa approach untuk build runner
-        echo "Attempt 1: Clean build"
-        flutter pub run build_runner clean
-        
-        echo "Attempt 2: Build with delete conflicting outputs"
-        flutter pub run build_runner build --delete-conflicting-outputs --verbose || true
-        
-        echo "Attempt 3: Jika masih gagal, coba tanpa build runner"
-        # Untuk sementara skip jika build runner terus gagal
-        
-    - name: Build APK (Skip if Build Runner Failed)
-      working-directory: ./flutter_inappwebview/example
-      run: |
-        # Coba build meski build runner gagal
         flutter build apk --release --android-skip-build-dependency-validation
         
     - name: Upload APK Artifact
@@ -75,4 +58,53 @@ jobs:
       with:
         name: flutter-app-apk
         path: flutter_inappwebview/example/build/app/outputs/flutter-apk/app-release.apk
+        retention-days: 30
+        
+    - name: Create Download Page
+      run: |
+        cat > download.html << 'EOF'
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Download Flutter App</title>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; text-align: center; }
+                .download-btn { 
+                    background: #007cba; 
+                    color: white; 
+                    padding: 15px 30px; 
+                    text-decoration: none; 
+                    border-radius: 5px; 
+                    display: inline-block; 
+                    margin: 20px; 
+                    font-size: 18px;
+                }
+                .download-btn:hover { background: #005a87; }
+                .info { margin: 20px 0; color: #666; }
+            </style>
+        </head>
+        <body>
+            <h1>Flutter InAppWebView Example App</h1>
+            <div class="info">Built on: $(date -u)</div>
+            <div class="info">Commit: ${{ github.sha }}</div>
+            <a href="./app-release.apk" class="download-btn">Download APK</a>
+            <div class="info">
+                <p>To install:</p>
+                <ol style="display: inline-block; text-align: left;">
+                    <li>Download the APK file above</li>
+                    <li>Enable "Install from unknown sources" in your Android settings</li>
+                    <li>Open the downloaded file to install</li>
+                </ol>
+            </div>
+        </body>
+        </html>
+        EOF
+        
+    - name: Upload Download Page
+      uses: actions/upload-artifact@v4
+      with:
+        name: download-page
+        path: download.html
         retention-days: 30
