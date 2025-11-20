@@ -21,59 +21,46 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
         
-    - name: Setup Flutter
+    - name: Setup Flutter (Latest Stable)
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: '3.16.0'
+        flutter-version: '3.22.0'  # Versi terbaru yang support Dart 3.3.0+
         cache: true
         cache-key: flutter-packages
         cache-path: ${{ github.workspace }}/.pub-cache
         
-    - name: Install FVM
+    - name: Check Flutter and Dart Version
       run: |
-        dart pub global activate fvm
-        echo "$HOME/.pub-cache/bin" >> $GITHUB_PATH
+        flutter --version
+        dart --version
         
-    - name: Check FVM config
+    - name: Install Dependencies (Root)
       run: |
-        if [ -f ".fvm/fvm_config.json" ]; then
-          echo "FVM config found"
-          cat .fvm/fvm_config.json
-        else
-          echo "No FVM config found, using default Flutter version"
-        fi
+        flutter pub get
         
-    - name: Install Flutter dependencies
+    - name: Install Dependencies (Example)
       run: |
         cd flutter_inappwebview/example
         flutter pub get
         
     - name: Run Build Runner
       run: |
-        # Coba jalankan dengan FVM dulu, jika gagal gunakan Flutter langsung
         cd flutter_inappwebview_platform_interface
-        if flutter pub run build_runner build --delete-conflicting-outputs; then
-          echo "Build runner completed successfully"
-        else
-          echo "Build runner failed, trying alternative approach"
-          flutter clean
-          flutter pub get
-          flutter pub run build_runner build --delete-conflicting-outputs
-        fi
+        flutter pub run build_runner build --delete-conflicting-outputs
         
     - name: Build APK
       run: |
         cd flutter_inappwebview/example
         flutter build apk --release --no-tree-shake-icons
         
-    - name: Upload APK artifact
+    - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: flutter-app
+        name: flutter-app-apk
         path: flutter_inappwebview/example/build/app/outputs/flutter-apk/app-release.apk
         retention-days: 30
         
-    - name: Create download page
+    - name: Create Download Page
       run: |
         cat > download.html << 'EOF'
         <!DOCTYPE html>
@@ -96,15 +83,19 @@ jobs:
                 }
                 .download-btn:hover { background: #005a87; }
                 .info { margin: 20px 0; color: #666; }
+                .commit-info { background: #f5f5f5; padding: 10px; border-radius: 5px; margin: 10px 0; }
             </style>
         </head>
         <body>
             <h1>Flutter InAppWebView Example App</h1>
-            <div class="info">Built on: $(date)</div>
-            <div class="info">Commit: ${{ github.sha }}</div>
+            <div class="info">Built on: $(date -u)</div>
+            <div class="commit-info">
+                <strong>Commit:</strong> ${{ github.sha }}<br>
+                <strong>Branch:</strong> ${{ github.ref_name }}
+            </div>
             <a href="./app-release.apk" class="download-btn">Download APK</a>
             <div class="info">
-                <p>To install:</p>
+                <p><strong>To install:</strong></p>
                 <ol style="display: inline-block; text-align: left;">
                     <li>Download the APK file above</li>
                     <li>Enable "Install from unknown sources" in your Android settings</li>
@@ -115,9 +106,40 @@ jobs:
         </html>
         EOF
         
-    - name: Upload download page
+    - name: Upload Download Page
       uses: actions/upload-artifact@v4
       with:
         name: download-page
         path: download.html
         retention-days: 30
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    
+    steps:
+    - name: Download APK Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: flutter-app-apk
+        path: public/
+        
+    - name: Download Page Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: download-page
+        path: public/
+        
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
+      
+    - name: Upload to Pages
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: public/
+        
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
