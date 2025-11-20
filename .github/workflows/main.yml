@@ -21,29 +21,31 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
         
-    - name: Install Flutter Manually
+    - name: Install Flutter
       run: |
-        # Install Flutter versi terbaru yang support Dart 3.3.0+
         cd $HOME
         git clone https://github.com/flutter/flutter.git -b stable --depth 1
         echo "$HOME/flutter/bin" >> $GITHUB_PATH
-        echo "$HOME/flutter/bin/cache/dart-sdk/bin" >> $GITHUB_PATH
         
-    - name: Setup Flutter
+    - name: Verify Flutter Installation
       run: |
-        flutter doctor -v
         flutter --version
         dart --version
         
-    - name: Precache Flutter Dependencies
+    - name: Accept Android Licenses
       run: |
-        flutter precache
+        yes | flutter doctor --android-licenses || true
         
-    - name: Install Dependencies (Root)
+    - name: Install Root Dependencies
       run: |
-        flutter pub get
+        # Install di root project (jika ada pubspec.yaml di root)
+        if [ -f "pubspec.yaml" ]; then
+          flutter pub get
+        else
+          echo "No pubspec.yaml in root, skipping root dependencies"
+        fi
         
-    - name: Install Dependencies (Example)
+    - name: Install Example Dependencies
       run: |
         cd flutter_inappwebview/example
         flutter pub get
