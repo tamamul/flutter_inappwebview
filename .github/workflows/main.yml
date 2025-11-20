@@ -21,101 +21,66 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
         
-    - name: Install Flutter
-      run: |
-        cd $HOME
-        git clone https://github.com/flutter/flutter.git -b stable --depth 1
-        echo "$HOME/flutter/bin" >> $GITHUB_PATH
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.22.0'
         
-    - name: Verify Flutter Installation
+    - name: Check Android Files
       run: |
-        flutter --version
-        dart --version
+        echo "=== Check Android build files ==="
+        cat flutter_inappwebview/example/android/build.gradle || echo "No top-level build.gradle"
+        echo "=== Check app build.gradle ==="
+        cat flutter_inappwebview/example/android/app/build.gradle || echo "No app build.gradle"
+        echo "=== Check settings.gradle ==="
+        cat flutter_inappwebview/example/android/settings.gradle || echo "No settings.gradle"
         
-    - name: Accept Android Licenses
+    - name: Upgrade Kotlin Version
       run: |
-        yes | flutter doctor --android-licenses || true
+        # Update Kotlin version in Android files
+        cd flutter_inappwebview/example/android
         
-    - name: Install Root Dependencies
-      run: |
-        # Install di root project (jika ada pubspec.yaml di root)
-        if [ -f "pubspec.yaml" ]; then
-          flutter pub get
-        else
-          echo "No pubspec.yaml in root, skipping root dependencies"
+        # Update in build.gradle (if exists)
+        if [ -f "build.gradle" ]; then
+          sed -i 's/kotlin_version = "1\.8\.0"/kotlin_version = "1.8.10"/g' build.gradle
+          sed -i 's/kotlinVersion = "1\.8\.0"/kotlinVersion = "1.8.10"/g' build.gradle
+          sed -i 's/ext.kotlin_version = "1\.8\.0"/ext.kotlin_version = "1.8.10"/g' build.gradle
+          echo "Updated build.gradle Kotlin version"
         fi
         
-    - name: Install Example Dependencies
+        # Update in app/build.gradle
+        if [ -f "app/build.gradle" ]; then
+          sed -i 's/kotlin_version = "1\.8\.0"/kotlin_version = "1.8.10"/g' app/build.gradle
+          sed -i 's/kotlinVersion = "1\.8\.0"/kotlinVersion = "1.8.10"/g' app/build.gradle
+          echo "Updated app/build.gradle Kotlin version"
+        fi
+        
+        # Update in settings.gradle (for plugins block)
+        if [ -f "settings.gradle" ]; then
+          sed -i 's/kotlin.*1\.8\.0/kotlin\" version \"1.8.10/g' settings.gradle
+          sed -i 's/\"org.jetbrains.kotlin.android\" version \"1\.8\.0\"/\"org.jetbrains.kotlin.android\" version \"1.8.10\"/g' settings.gradle
+          echo "Updated settings.gradle Kotlin version"
+        fi
+        
+    - name: Install Dependencies
+      working-directory: ./flutter_inappwebview/example
       run: |
-        cd flutter_inappwebview/example
         flutter pub get
         
     - name: Run Build Runner
+      working-directory: ./flutter_inappwebview_platform_interface
       run: |
-        cd flutter_inappwebview_platform_interface
+        flutter pub get
         flutter pub run build_runner build --delete-conflicting-outputs
         
-    - name: Build APK
+    - name: Build APK with Skip Validation
+      working-directory: ./flutter_inappwebview/example
       run: |
-        cd flutter_inappwebview/example
-        flutter build apk --release --no-tree-shake-icons
+        flutter build apk --release --android-skip-build-dependency-validation
         
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: flutter-app-apk
         path: flutter_inappwebview/example/build/app/outputs/flutter-apk/app-release.apk
-        retention-days: 30
-        
-    - name: Create Download Page
-      run: |
-        cat > download.html << 'EOF'
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Download Flutter App</title>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <style>
-                body { font-family: Arial, sans-serif; margin: 40px; text-align: center; }
-                .download-btn { 
-                    background: #007cba; 
-                    color: white; 
-                    padding: 15px 30px; 
-                    text-decoration: none; 
-                    border-radius: 5px; 
-                    display: inline-block; 
-                    margin: 20px; 
-                    font-size: 18px;
-                }
-                .download-btn:hover { background: #005a87; }
-                .info { margin: 20px 0; color: #666; }
-                .commit-info { background: #f5f5f5; padding: 10px; border-radius: 5px; margin: 10px 0; }
-            </style>
-        </head>
-        <body>
-            <h1>Flutter InAppWebView Example App</h1>
-            <div class="info">Built on: $(date -u)</div>
-            <div class="commit-info">
-                <strong>Commit:</strong> ${{ github.sha }}<br>
-                <strong>Branch:</strong> ${{ github.ref_name }}
-            </div>
-            <a href="./app-release.apk" class="download-btn">Download APK</a>
-            <div class="info">
-                <p><strong>To install:</strong></p>
-                <ol style="display: inline-block; text-align: left;">
-                    <li>Download the APK file above</li>
-                    <li>Enable "Install from unknown sources" in your Android settings</li>
-                    <li>Open the downloaded file to install</li>
-                </ol>
-            </div>
-        </body>
-        </html>
-        EOF
-        
-    - name: Upload Download Page
-      uses: actions/upload-artifact@v4
-      with:
-        name: download-page
-        path: download.html
         retention-days: 30
