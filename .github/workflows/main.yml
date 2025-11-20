@@ -34,21 +34,37 @@ jobs:
         dart pub global activate fvm
         echo "$HOME/.pub-cache/bin" >> $GITHUB_PATH
         
-    - name: Setup FVM and Install Dependencies
+    - name: Check FVM config
       run: |
-        fvm install
-        fvm flutter pub get
+        if [ -f ".fvm/fvm_config.json" ]; then
+          echo "FVM config found"
+          cat .fvm/fvm_config.json
+        else
+          echo "No FVM config found, using default Flutter version"
+        fi
+        
+    - name: Install Flutter dependencies
+      run: |
         cd flutter_inappwebview/example
-        fvm flutter pub get
+        flutter pub get
         
     - name: Run Build Runner
       run: |
-        npm run build
+        # Coba jalankan dengan FVM dulu, jika gagal gunakan Flutter langsung
+        cd flutter_inappwebview_platform_interface
+        if flutter pub run build_runner build --delete-conflicting-outputs; then
+          echo "Build runner completed successfully"
+        else
+          echo "Build runner failed, trying alternative approach"
+          flutter clean
+          flutter pub get
+          flutter pub run build_runner build --delete-conflicting-outputs
+        fi
         
     - name: Build APK
       run: |
         cd flutter_inappwebview/example
-        fvm flutter build apk --release --no-tree-shake-icons
+        flutter build apk --release --no-tree-shake-icons
         
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
@@ -84,7 +100,7 @@ jobs:
         </head>
         <body>
             <h1>Flutter InAppWebView Example App</h1>
-            <div class="info">Built on: ${{ github.event.head_commit.timestamp }}</div>
+            <div class="info">Built on: $(date)</div>
             <div class="info">Commit: ${{ github.sha }}</div>
             <a href="./app-release.apk" class="download-btn">Download APK</a>
             <div class="info">
@@ -105,34 +121,3 @@ jobs:
         name: download-page
         path: download.html
         retention-days: 30
-
-  deploy-pages:
-    name: Deploy to GitHub Pages
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-    
-    steps:
-    - name: Download APK artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: flutter-app
-        path: dist/
-        
-    - name: Download page artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: download-page
-        path: dist/
-        
-    - name: Setup Pages
-      uses: actions/configure-pages@v4
-      
-    - name: Upload to Pages
-      uses: actions/upload-pages-artifact@v3
-      with:
-        path: dist/
-        
-    - name: Deploy to GitHub Pages
-      id: deployment
-      uses: actions/deploy-pages@v4
