@@ -1,0 +1,138 @@
+name: Build Flutter APK
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.16.0'
+        cache: true
+        cache-key: flutter-packages
+        cache-path: ${{ github.workspace }}/.pub-cache
+        
+    - name: Install FVM
+      run: |
+        dart pub global activate fvm
+        echo "$HOME/.pub-cache/bin" >> $GITHUB_PATH
+        
+    - name: Setup FVM and Install Dependencies
+      run: |
+        fvm install
+        fvm flutter pub get
+        cd flutter_inappwebview/example
+        fvm flutter pub get
+        
+    - name: Run Build Runner
+      run: |
+        npm run build
+        
+    - name: Build APK
+      run: |
+        cd flutter_inappwebview/example
+        fvm flutter build apk --release --no-tree-shake-icons
+        
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: flutter-app
+        path: flutter_inappwebview/example/build/app/outputs/flutter-apk/app-release.apk
+        retention-days: 30
+        
+    - name: Create download page
+      run: |
+        cat > download.html << 'EOF'
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Download Flutter App</title>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; text-align: center; }
+                .download-btn { 
+                    background: #007cba; 
+                    color: white; 
+                    padding: 15px 30px; 
+                    text-decoration: none; 
+                    border-radius: 5px; 
+                    display: inline-block; 
+                    margin: 20px; 
+                    font-size: 18px;
+                }
+                .download-btn:hover { background: #005a87; }
+                .info { margin: 20px 0; color: #666; }
+            </style>
+        </head>
+        <body>
+            <h1>Flutter InAppWebView Example App</h1>
+            <div class="info">Built on: ${{ github.event.head_commit.timestamp }}</div>
+            <div class="info">Commit: ${{ github.sha }}</div>
+            <a href="./app-release.apk" class="download-btn">Download APK</a>
+            <div class="info">
+                <p>To install:</p>
+                <ol style="display: inline-block; text-align: left;">
+                    <li>Download the APK file above</li>
+                    <li>Enable "Install from unknown sources" in your Android settings</li>
+                    <li>Open the downloaded file to install</li>
+                </ol>
+            </div>
+        </body>
+        </html>
+        EOF
+        
+    - name: Upload download page
+      uses: actions/upload-artifact@v4
+      with:
+        name: download-page
+        path: download.html
+        retention-days: 30
+
+  deploy-pages:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    
+    steps:
+    - name: Download APK artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: flutter-app
+        path: dist/
+        
+    - name: Download page artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: download-page
+        path: dist/
+        
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
+      
+    - name: Upload to Pages
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: dist/
+        
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
