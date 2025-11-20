@@ -21,18 +21,23 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
         
-    - name: Setup Flutter (Latest Stable)
-      uses: subosito/flutter-action@v2
-      with:
-        flutter-version: '3.22.0'  # Versi terbaru yang support Dart 3.3.0+
-        cache: true
-        cache-key: flutter-packages
-        cache-path: ${{ github.workspace }}/.pub-cache
-        
-    - name: Check Flutter and Dart Version
+    - name: Install Flutter Manually
       run: |
+        # Install Flutter versi terbaru yang support Dart 3.3.0+
+        cd $HOME
+        git clone https://github.com/flutter/flutter.git -b stable --depth 1
+        echo "$HOME/flutter/bin" >> $GITHUB_PATH
+        echo "$HOME/flutter/bin/cache/dart-sdk/bin" >> $GITHUB_PATH
+        
+    - name: Setup Flutter
+      run: |
+        flutter doctor -v
         flutter --version
         dart --version
+        
+    - name: Precache Flutter Dependencies
+      run: |
+        flutter precache
         
     - name: Install Dependencies (Root)
       run: |
@@ -112,34 +117,3 @@ jobs:
         name: download-page
         path: download.html
         retention-days: 30
-
-  deploy:
-    name: Deploy to GitHub Pages
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-    
-    steps:
-    - name: Download APK Artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: flutter-app-apk
-        path: public/
-        
-    - name: Download Page Artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: download-page
-        path: public/
-        
-    - name: Setup Pages
-      uses: actions/configure-pages@v4
-      
-    - name: Upload to Pages
-      uses: actions/upload-pages-artifact@v3
-      with:
-        path: public/
-        
-    - name: Deploy to GitHub Pages
-      id: deployment
-      uses: actions/deploy-pages@v4
